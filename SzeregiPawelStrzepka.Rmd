@@ -1,0 +1,615 @@
+---
+title: "Szeregi czasowe  - Projekt zaliczeniowy"
+author: "Paweł Strzępka"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    toc_depth: 3
+    number_sections: false
+    theme: lumen
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+<style>
+h4 {
+    margin-top:2.5em
+}
+h4.author, h4.date  {
+    margin-top:0em
+}
+</style>
+
+# <b>Analizowane dane</b>
+Dane pobrane zostały ze strony https://fred.stlouisfed.org. 
+
+Dane (z widoczną sezonowością) dotyczące indeksu cen producentów w branży hotelarskiej (Hotels and Motels, Except Casino Hotels) odnoszą się do zmian cen usług hotelarskich z wyłączeniem hoteli kasynowych. Zagadnienie indeksu cen producentów w branży hotelarskiej dostarcza kluczowych informacji dotyczących zmian cen w sektorze hotelarskim, inflacji, planowania finansowego, konkurencyjności oraz prognozowania popytu i podaży. Pomiary wykonane zostały co miesiąc od 01.12.2003 do 01.04.2023.
+
+Dane (z widocznym trendem) dotyczące zaawansowanych sprzedaży detalicznych w handlu detalicznym (Advance Retail Sales: Retail Trade) są istotnym wskaźnikiem ekonomicznym, który odzwierciedla zmiany sprzedaży detalicznej w sektorze handlu. Dane dotyczące handlu detalicznego dostarczają kluczowych informacji na temat kondycji gospodarki, trendów konsumpcyjnych i efektywności strategii biznesowych. Trafne prognozy w tej dziedzinie mogą przynieść korzyści dla przedsiębiorców oraz inwestorów. Pomiary wykonane zostały co miesiąc od 01.01.1992 do 01.04.2023.
+
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+library(lubridate)
+library(forecast)
+library(expsmooth)
+library(fma)
+```
+```{r}
+getwd()
+setwd('D:/materialystudia/ProjektSzeregi')
+
+dane1 <- read.csv("PCU721110721110.csv", header=T, sep=",")
+
+dane2 <- read.csv("RSXFS.csv", header=T, sep=",")
+
+```
+
+```{r}
+szereg1 <- ts(dane1$PCU721110721110, start=decimal_date(ymd("2003-12-01")), freq = 12)
+is.ts(szereg1)
+plot(szereg1)
+```
+
+Duży spadek w 2020 roku spowodowany przez pandemię covid-19
+
+```{r}
+szereg2 <- ts(dane2$RSXFS, start=decimal_date(ymd("1992-01-01")), freq = 12)
+is.ts(szereg2)
+plot(szereg2)
+
+```
+
+Spadek w 2008 roku może byc spowodowany ogólnoświatowym kryzysem gospodarczym w latach 2007-2009
+
+
+
+
+
+# <b>Omówienie głównych cech analizowanych szeregów na podstawie wykresów</b>
+
+## Szereg z wyraźną sezonowością {.tabset .tabset-pills}
+
+### Wykres sezonowy monthplot()
+```{r}
+monthplot(szereg1)
+title(main = "HOTELE", line = 1)
+
+```
+
+
+### Wykresy pudełkowe boxplot()
+```{r}
+boxplot(szereg1 ~ cycle(szereg1), names=month.name)
+
+```
+
+Możemy zaobserwoować wartości znacznie odstające od reszty. Na wykresie mamy mediany, kwartyle, wartości minimalne i maksymalne oraz wartości odstające.
+
+### Wykres sezonowy seasonplot()
+```{r}
+seasonplot(szereg1, col = rainbow(12), main = "HOTELE",  year.labels = TRUE, pch=19, lwd=1.0)
+
+```
+
+Możemy zaobserwować sezonowość i trend rosnący
+
+### Wykresy rozrzutu dla wartości opóźnionych lag.plot()
+```{r}
+lag.plot(szereg1, lags=12)
+
+```
+
+Istotna zależność dla opóźnienia równego 1 sugeruje obecność trendu. Silna zależność występująca dla opóźnienia 12 sugeruje sezonowość roczną.
+
+### Wykres autokorelacji Acf
+```{r}
+Acf(szereg1, lag.max = 60, main = "HOTELE")
+
+```
+
+Wartości ACF zanikające powoli i cyklicznie sugerują obecność sezonowości
+
+### Wykres cząstkowej autokorelacji Pacf
+```{r}
+Pacf(szereg1, lag.max = 60, main = "HOTELE")
+
+```
+
+Wartość dla opóźnienia lag=1 świadczy zwykle o obecności trendu wzrostowego
+
+## Szereg z wyraźnym trendem {.tabset .tabset-pills}
+
+### Wykres sezonowy monthplot()
+```{r}
+monthplot(szereg2)
+title(main = "SPRZEDAŻ DETALICZNA", line = 1)
+
+```
+
+### Wykresy pudełkowe boxplot()
+```{r}
+boxplot(szereg2 ~ cycle(szereg2), names=month.name)
+
+```
+
+Brak wartości znacznie odstających od reszty. Na wykresie mamy mediany, kwartyle, wartości minimalne i maksymalne oraz wartości odstające.
+
+### Wykres sezonowy seasonplot()
+```{r}
+seasonplot(szereg2, col = rainbow(12), main = "SPRZEDAŻ DETALICZNA", year.labels = TRUE, pch=19, lwd=1.0)
+
+```
+
+Możemy zaobserwować wystepujący trend rosnący
+
+### Wykresy rozrzutu dla wartości opóźnionych lag.plot()
+```{r}
+lag.plot(szereg2, lags=12)
+
+```
+
+Największa korelacja występuje dla lag=1 co może oznaczać trend rosnący
+
+### Wykres autokorelacji Acf
+```{r}
+Acf(szereg2, lag.max = 60,  main = "SPRZEDAŻ DETALICZNA")
+
+```
+
+Dodatnie i powoli zanikające wartości funkcji ACF sugerują, że dane zawierają deterministyczną składową trendu
+
+### Wykres cząstkowej autokorelacji Pacf
+```{r}
+Pacf(szereg2, lag.max = 60,  main = "SPRZEDAŻ DETALICZNA")
+
+```
+
+Duża wartość dla opóźnienia lag=1 świadczy o obecności silnego trendu wzrostowego
+
+
+# <b>Dekompozycja</b>
+
+## Szereg z wyraźną sezonowością {.tabset .tabset-pills}
+
+### Dekompozycja addytywna
+```{r}
+plot(decompose(szereg1, type="additive"))
+```
+
+### Dekompozycja multiplikatywna
+```{r}
+plot(decompose(szereg1, type="multiplicative"))
+```
+
+Brak widocznej różnicy pomiędzy dekompozycją addytywną i multiplikatywną
+
+
+### Dekompozycja za pomocą ruchomej średniej
+```{r}
+ruchomesrednie1 <- filter(szereg1, sides = 2, filter = rep(1/12,12))
+plot(szereg1)
+lines(ruchomesrednie1, col = "purple")
+```
+
+### Dekompozycja na podstawie modelu regresji
+
+#### Trend liniowy
+
+```{r}
+d4 <- szereg1
+elec_model <- tslm(d4 ~ trend)
+plot(d4)
+lines(fitted(elec_model), col = "blue", lty = 2)
+
+tsdisplay(residuals(elec_model))
+```
+
+#### Trend liniowy i sezonowość
+
+```{r}
+
+elec_model_sezon <- tslm(d4 ~ trend +season)
+plot(d4)
+lines(fitted(elec_model_sezon), col="blue", lty=2)
+tsdisplay(residuals(elec_model_sezon))
+```
+
+#### Trend liniowy, sezonowość i Box-Cox
+
+```{r}
+elec_model_boxcox <- tslm(d4 ~ trend + season, lambda="auto")
+plot(d4)
+lines(fitted(elec_model_boxcox), col="blue", lty=2)
+
+
+bc <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 2))
+plot(d4)
+lines(fitted(bc), col = "blue", lty = 2)
+
+bc_season <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 2)+ season)
+plot(d4)
+lines(fitted(bc_season), col = "blue", lty = 2)
+
+bc_season_boxcox <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 2)+ season, lambda="auto")
+plot(d4)
+lines(fitted(bc_season_boxcox), col = "blue", lty = 2)
+
+```
+
+#### Dla wielomianu st 5
+
+```{r}
+bc <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 5))
+plot(d4)
+lines(fitted(bc), col = "blue", lty = 2)
+
+bc_season <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 5)+ season)
+plot(d4)
+lines(fitted(bc_season), col = "blue", lty = 2)
+
+bc_season_boxcox <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 5)+ season, lambda="auto")
+plot(d4)
+lines(fitted(bc_season_boxcox), col = "blue", lty = 2)
+
+
+tsdisplay(residuals(bc_season_boxcox))
+
+```
+
+## Szereg z wyraźnym trendem {.tabset .tabset-pills}
+
+### Dekompozycja addytywna
+```{r}
+plot(decompose(szereg2, type="additive"))
+```
+
+### Dekompozycja multiplikatywna
+```{r}
+plot(decompose(szereg2, type="multiplicative"))
+```
+
+Brak widocznej różnicy pomiędzy dekompozycją addytywną i multiplikatywną
+
+### Dekompozycja za pomocą ruchomej średniej
+```{r}
+ruchomesrednie2 <- filter(szereg2, sides = 2, filter = rep(1/12,12))
+plot(szereg2)
+lines(ruchomesrednie2, col = "purple")
+```
+
+### Dekompozycja na podstawie modelu regresji
+
+#### Trend liniowy
+
+```{r}
+d4 <- szereg2
+elec_model <- tslm(d4 ~ trend)
+plot(d4)
+lines(fitted(elec_model), col = "blue", lty = 2)
+
+tsdisplay(residuals(elec_model))
+```
+
+#### Trend liniowy i sezonowość
+
+```{r}
+elec_model_sezon <- tslm(d4 ~ trend +season)
+plot(d4)
+lines(fitted(elec_model_sezon), col="blue", lty=2)
+tsdisplay(residuals(elec_model_sezon))
+```
+
+#### Trend liniowy, sezonowość i Box-Cox
+
+```{r}
+elec_model_boxcox <- tslm(d4 ~ trend + season, lambda="auto")
+plot(d4)
+lines(fitted(elec_model_boxcox), col="blue", lty=2)
+
+bc <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 2))
+plot(d4)
+lines(fitted(bc), col = "blue", lty = 2)
+
+bc_season <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 2)+ season)
+plot(d4)
+lines(fitted(bc_season), col = "blue", lty = 2)
+
+bc_season_boxcox <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 2)+ season, lambda="auto")
+plot(d4)
+lines(fitted(bc_season_boxcox), col = "blue", lty = 2)
+
+tsdisplay(residuals(bc_season_boxcox))
+```
+
+#### Dla wielomianu st 5
+
+```{r}
+
+bc <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 5))
+plot(d4)
+lines(fitted(bc), col = "blue", lty = 2)
+
+bc_season <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 5)+ season)
+plot(d4)
+lines(fitted(bc_season), col = "blue", lty = 2)
+
+bc_season_boxcox <- tslm(d4 ~ poly(trend, raw=TRUE, degree = 5)+ season, lambda="auto")
+plot(d4)
+lines(fitted(bc_season_boxcox), col = "blue", lty = 2)
+
+tsdisplay(residuals(bc_season_boxcox))
+```
+
+
+# <b>Uczynienie szeregu stacjonarnym</b>
+
+## Szereg z wyraźną sezonowością {.tabset .tabset-pills}
+
+### Eliminacja trendu i sezonowości
+```{r}
+# Eliminacja trendu, sezonowości szereg1
+#usuwamy trend
+szereg1diff <- diff(szereg1)
+tsdisplay(szereg1diff)
+
+#trendu nie ma, jest sezonowosc
+# usuwamy sezonowosc
+szereg1diff12 <- diff(szereg1diff, lag=12)
+tsdisplay(szereg1diff12)
+```
+
+Warto sprawdzić: MA(3), MA(11), MA(12), MA(23), MA(36), AR(3), AR(12), AR(14)
+
+Szereg nie jest realizacja szumu białego ponieważ wartosci korelacj sa  i wystają poza przedział ufności
+
+## Szereg z wyraźnym trendem {.tabset .tabset-pills}
+
+### Eliminacja trendu
+```{r}
+# Eliminacja trendu, sezonowości szereg2
+#usuwamy trend
+szereg2diff <- diff(szereg2)
+szereg2diff12 <- szereg2diff
+tsdisplay(szereg2diff12)
+#trendu nie ma i nie ma sezonowosci
+```
+Warto sprawdzić: MA(2), MA(11), MA(12), AR(10), AR(23)
+
+Szereg nie jest realizacja szumu białego ponieważ wartosci korelacj są duże  i wystają poza przedział ufności
+
+# <b>Wyznaczenie współczynników modelu AR</b>
+
+## Szereg z wyraźną sezonowością {.tabset .tabset-pills}
+
+Dla wszystkich metod rząd modelu jest zgodny. Automatyczny dobór jest bardziej zbliżony do metody Yule-Walkera.
+
+### Metoda Yule-Walkera
+```{r}
+#MA(23)
+#AR(14)
+tsdisplay(szereg1diff12, lag.max = 60)
+szereg1diff12yw <- ar(szereg1diff12, aic=FALSE, order.max = 14, method=c("yule-walker"))
+szereg1diff12yw
+```
+
+### Metoda największej wiarygodności (MLE)
+```{r}
+szereg1diff12mle <- ar(szereg1diff12, aic=FALSE, order.max = 14, method=c("mle"))
+szereg1diff12mle
+```
+
+### Dobór automatyczny
+```{r}
+szereg1diff12auto <- ar(szereg1diff12, aic=TRUE)
+szereg1diff12auto
+```
+
+
+## Szereg z wyraźnym trendem {.tabset .tabset-pills}
+
+Funkcja automatyczna dobrała model rzędu 11
+
+### Metoda Yule-Walkera
+```{r}
+#MA(11)
+#AR(23)
+tsdisplay(szereg2diff12, lag.max = 60)
+szereg2diff12yw <- ar(szereg2diff12, aic=FALSE, order.max = 23, method=c("yule-walker"))
+szereg2diff12yw
+
+```
+
+### Metoda największej wiarygodności (MLE)
+```{r}
+szereg2diff12mle <- ar(szereg2diff12, aic=FALSE, order.max = 23, method=c("mle"))
+szereg2diff12mle
+
+```
+
+### Dobór automatyczny
+```{r}
+szereg2diff12auto <- ar(szereg2diff12, aic=TRUE)
+szereg2diff12auto
+
+```
+
+# <b>Wyznaczenie współczynników dla modelu MA(q)</b>
+
+## Szereg z wyraźną sezonowością {.tabset .tabset-pills}
+```{r}
+#szereg1
+szereg1arima <- Arima(szereg1diff12 , order = c(0,0,23))
+summary(szereg1arima)
+```
+
+## Szereg z wyraźnym trendem {.tabset .tabset-pills}
+```{r}
+#szereg2
+szereg2arima <- Arima(szereg2diff12 , order = c(0,0,11))
+summary(szereg2arima)
+```
+
+# <b>Wyznaczenie optymalnych modeli funkcją auto.arima()</b>
+
+## Szereg z wyraźną sezonowością {.tabset .tabset-pills}
+```{r}
+autoarimaAICs1 <- auto.arima(szereg1diff12, ic="aic")
+autoarimaAICs1
+
+autoarimaAICCs1 <- auto.arima(szereg1diff12, ic="aicc")
+autoarimaAICCs1
+
+autoarimaBICs1 <- auto.arima(szereg1diff12, ic="bic")
+autoarimaBICs1
+```
+Najlepszym modelem jest ARIMA(0,0,0)(0,0,1) wyznaczony przez trzy kryteria
+
+## Szereg z wyraźnym trendem {.tabset .tabset-pills}
+```{r}
+autoarimaAICs2 <- auto.arima(szereg2diff12, ic="aic")
+autoarimaAICs2
+
+autoarimaAICCs2 <- auto.arima(szereg2diff12, ic="aicc")
+autoarimaAICCs2
+
+autoarimaBICs2 <- auto.arima(szereg2diff12, ic="bic")
+autoarimaBICs2
+```
+Najlepszym modelem jest ARIMA(0,0,2)(0,0,1) wyznaczony przez dwa pierwsze kryteria. Dla kryterium bic otrzymano ARIMA(0,0,0) 
+
+# <b>Prognozowanie z wykorzystaniem metod naiwnych</b>
+
+## Szereg z wyraźną sezonowością {.tabset .tabset-pills}
+
+### prognozowanie naiwne oparte na sredniej
+```{r}
+# prognozowanie naiwne oparte na sredniej
+szereg1.meanf <- meanf(szereg1, h = 60)
+plot(szereg1.meanf)
+
+#usuniecie trendu i sezonowosci
+
+szereg1.meanf2 <- meanf(szereg1diff12, h=24)
+plot(szereg1.meanf2)
+```
+
+### prognozowanie naiwne
+```{r}
+#prognozowanie naiwne
+pnaiwnes1 <- naive(szereg1, h=24)
+plot(pnaiwnes1)
+
+psnaiwnes1 <- snaive(szereg1, h=24)
+plot(psnaiwnes1)
+```
+
+### prognozowanie z uwzglednieniem dryftu
+```{r}
+#z uwzglednieniem dryftu
+zdryftems1 <- rwf(szereg1, h=24, drift=TRUE)
+plot(zdryftems1)
+
+```
+
+### Sprawdzenie najlepszej metody
+```{r}
+# Sprawdzenie najlepszej metody
+accuracy(szereg1.meanf)
+accuracy(pnaiwnes1)
+accuracy(psnaiwnes1)
+accuracy(zdryftems1)
+#Dla szereg1 metoda najlepsza to naive()
+```
+Do sprawdzenia, która metoda jest najlepsza możemy wykorzystać funkcję accuracy() z pakietu forecast.
+W tym przypadku ocena dokładności prognoz (RMSE, MAE, MAPE, MASE)
+oparta jest na błędach prognozy wewnątrz próby, czyli na tych samych, jak te wykorzystane do konstrukcji prognoz.
+
+Wszytskie kryteria wskazują metodę błądzenia losowego z dryftem jako najlepszą
+
+## Szereg z wyraźnym trendem {.tabset .tabset-pills}
+
+### prognozowanie naiwne oparte na sredniej
+```{r}
+# prognozowanie naiwne oparte na sredniej
+szereg2.meanf <- meanf(szereg2, h = 60)
+plot(szereg2.meanf)
+
+#usuniecie trendu i sezonowosci
+
+szereg2.meanf2 <- meanf(szereg2diff12, h=24)
+plot(szereg2.meanf2)
+
+```
+
+### prognozowanie naiwne
+```{r}
+#prognozowanie naiwne
+pnaiwnes2 <- naive(szereg2, h=24)
+plot(pnaiwnes2)
+
+
+psnaiwnes2 <- snaive(szereg2, h=24)
+plot(psnaiwnes2)
+
+```
+
+### prognozowanie z uwzglednieniem dryftu
+```{r}
+#z uwzglednieniem dryftu
+zdryftems2 <- rwf(szereg2, h=24, drift=TRUE)
+plot(zdryftems2)
+
+```
+
+### Sprawdzenie najlepszej metody
+```{r}
+accuracy(szereg2.meanf)
+accuracy(pnaiwnes2)
+accuracy(psnaiwnes2)
+accuracy(zdryftems2)
+#Dla szereg2 metoda najlepsza to naive()
+```
+Do sprawdzenia, która metoda jest najlepsza możemy wykorzystać funkcję accuracy() z pakietu forecast.
+W tym przypadku ocena dokładności prognoz (RMSE, MAE, MAPE, MASE)
+oparta jest na błędach prognozy wewnątrz próby, czyli na tych samych, jak te wykorzystane do konstrukcji prognoz.
+
+Wszytskie kryteria wskazują metodę błądzenia losowego z dryftem jako najlepszą
+
+# <b>Prognozowanie na modelach z rodziny ARIMA</b>
+
+## Szereg z wyraźną sezonowością {.tabset .tabset-pills}
+
+```{r}
+#Prognozowanie na modelach z rodziny ARIMA
+model1.Arimas1 <- Arima(szereg1, order=c(0,1,23), seasonal=c(0,1,0), lambda=0)
+model2.Arimas1 <- Arima(szereg1, order=c(14,1,0), seasonal=c(0,1,0), lambda=0)
+model3.Arimas1 <- Arima(szereg1, order=c(1,0,1), seasonal=c(0,0,1), lambda=0)
+prognozy.model1.Arimas1 <- forecast(model1.Arimas1, h=24)
+prognozy.model2.Arimas1 <- forecast(model2.Arimas1, h=24)
+prognozy.model3.Arimas1 <- forecast(model3.Arimas1, h=24)
+plot(prognozy.model1.Arimas1)
+plot(prognozy.model2.Arimas1)
+plot(prognozy.model3.Arimas1)
+
+```
+
+## Szereg z wyraźnym trendem {.tabset .tabset-pills}
+
+```{r}
+
+model1.Arimas2 <- Arima(szereg2, order=c(0,1,11), seasonal=c(0,1,0), lambda=0)
+model2.Arimas2 <- Arima(szereg2, order=c(23,1,0), seasonal=c(0,1,0), lambda=0)
+model3.Arimas2 <- Arima(szereg2, order=c(0,0,2), seasonal=c(0,0,1), lambda=0)
+prognozy.model1.Arimas2 <- forecast(model1.Arimas2, h=24)
+prognozy.model2.Arimas2 <- forecast(model2.Arimas2, h=24)
+prognozy.model3.Arimas2 <- forecast(model3.Arimas2, h=24)
+plot(prognozy.model1.Arimas2)
+plot(prognozy.model2.Arimas2)
+plot(prognozy.model3.Arimas2)
+
+```
+
